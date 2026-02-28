@@ -1,1 +1,257 @@
-<p>Hello, World!</p>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retirement Countdown</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+
+        body {
+            font-family: Georgia, 'Times New Roman', serif;
+            background: #f5f2eb;
+            color: #333;
+            min-height: 100vh;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        h1 {
+            font-size: 2rem;
+            font-weight: normal;
+            letter-spacing: 0.05em;
+            margin: 0 0 0.3rem;
+            color: #444;
+        }
+
+        .subtitle {
+            font-size: 1.25rem;
+            color: #999;
+            margin: 0 0 2.5rem;
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 14px rgba(0, 0, 0, 0.09);
+            padding: 2.5rem 3.5rem;
+            max-width: 620px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .main-countdown {
+            font-size: 1.45rem;
+            color: #2c5f2e;
+            margin-bottom: 1.5rem;
+            line-height: 1.5;
+        }
+
+        .main-countdown .zero {
+            color: #bbb;
+        }
+
+        .divider {
+            border: none;
+            border-top: 1px solid #ede9e0;
+            margin: 1.5rem 0;
+        }
+
+        .totals {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem 2rem;
+        }
+
+        .total-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .total-value {
+            font-size: 1.9rem;
+            font-weight: bold;
+            color: #2c5f2e;
+        }
+
+        .total-label {
+            font-size: 0.8rem;
+            color: #999;
+            margin-top: 0.3rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .total-note {
+            font-size: 0.75rem;
+            color: #bbb;
+            margin-top: 0.2rem;
+        }
+
+        .retired-message {
+            font-size: 2rem;
+            color: #2c5f2e;
+        }
+
+        .updated {
+            font-size: 0.75rem;
+            color: #ccc;
+            margin-top: 1.25rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>Retirement Countdown</h1>
+    <p class="subtitle">September 30, 2027</p>
+
+    <div class="card">
+        <div id="display">Loading&hellip;</div>
+    </div>
+    <div class="updated" id="updated"></div>
+
+    <script>
+        // Target: end of day September 30, 2027 in the viewer's local time.
+        // Represented as midnight October 1 (= the moment Sept 30 ends).
+        const TARGET = new Date(2027, 9, 1, 0, 0, 0);
+
+        // Break the remaining time into years, months, days, hours, minutes.
+        function decompose(now, target) {
+            let years  = target.getFullYear() - now.getFullYear();
+            let months = target.getMonth()    - now.getMonth();
+            let days   = target.getDate()     - now.getDate();
+            let hours  = target.getHours()    - now.getHours();
+            let mins   = target.getMinutes()  - now.getMinutes();
+
+            if (mins   < 0) { mins += 60;  hours--; }
+            if (hours  < 0) { hours += 24; days--;  }
+            if (days   < 0) {
+                months--;
+                // Days in the month preceding target's month
+                days += new Date(target.getFullYear(), target.getMonth(), 0).getDate();
+            }
+            if (months < 0) { months += 12; years--; }
+
+            return { years, months, days, hours, mins };
+        }
+
+        // IU holidays — dates that fall on weekdays are excluded from workday count.
+        // 2026 holidays provided; add 2027 dates below when available.
+        const HOLIDAYS = new Set([
+            // 2026
+            '2026-03-16',
+            '2026-05-25',
+            '2026-06-19',
+            '2026-07-04',
+            '2026-09-07',
+            '2026-11-26', '2026-11-27',
+            '2026-12-25', '2026-12-26', '2026-12-27',
+            '2026-12-28', '2026-12-29', '2026-12-30', '2026-12-31',
+            // 2027 — add dates here
+        ]);
+
+        function dateKey(d) {
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${d.getFullYear()}-${mm}-${dd}`;
+        }
+
+        // Count weekdays and workdays (weekdays minus holidays) in one pass.
+        function countDays(now) {
+            const end = new Date(TARGET);
+            end.setHours(0, 0, 0, 0);
+
+            const d = new Date(now);
+            d.setHours(0, 0, 0, 0);
+            d.setDate(d.getDate() + 1); // start from tomorrow
+
+            let weekdays = 0, workdays = 0;
+            while (d < end) {
+                const dow = d.getDay();
+                if (dow >= 1 && dow <= 5) {
+                    weekdays++;
+                    if (!HOLIDAYS.has(dateKey(d))) workdays++;
+                }
+                d.setDate(d.getDate() + 1);
+            }
+            return { weekdays, workdays };
+        }
+
+        // PTO accrual: 3 days/month, counting the current calendar month
+        // through September 2027 inclusive.
+        function ptoAccrued(now) {
+            const months = (2027 - now.getFullYear()) * 12 + (8 - now.getMonth()) + 1;
+            return Math.max(0, months) * 3;
+        }
+
+        function span(value, label, singular) {
+            const cls = value === 0 ? ' class="zero"' : '';
+            const word = value === 1 ? singular : label;
+            return `<span${cls}>${value} ${word}</span>`;
+        }
+
+        function pad(n) {
+            return String(n).padStart(2, '0');
+        }
+
+        function update() {
+            const now  = new Date();
+            const displayEl = document.getElementById('display');
+            const updatedEl = document.getElementById('updated');
+
+            if (now >= TARGET) {
+                displayEl.innerHTML = '<div class="retired-message">Congratulations &mdash; You\'re Retired!</div>';
+                updatedEl.textContent = '';
+                return;
+            }
+
+            const d              = decompose(now, TARGET);
+            const totMonths      = d.years * 12 + d.months;
+            const totDays        = Math.floor((TARGET - now) / 86400000);
+            const { weekdays, workdays } = countDays(now);
+            const pto            = ptoAccrued(now);
+            const netWorkdays    = workdays - pto;
+
+            displayEl.innerHTML = `
+                <div class="main-countdown">
+                    ${span(d.years,  'years',   'year')},
+                    ${span(d.months, 'months',  'month')},
+                    ${span(d.days,   'days',    'day')}
+                    &mdash;
+                    ${span(d.hours,  'hours',   'hour')}
+                    :&nbsp;${pad(d.mins)}&nbsp;minutes
+                </div>
+                <hr class="divider">
+                <div class="totals">
+                    <div class="total-item">
+                        <span class="total-value">${totMonths.toLocaleString()}</span>
+                        <span class="total-label">Total Months</span>
+                    </div>
+                    <div class="total-item">
+                        <span class="total-value">${totDays.toLocaleString()}</span>
+                        <span class="total-label">Total Days</span>
+                    </div>
+                    <div class="total-item">
+                        <span class="total-value">${weekdays.toLocaleString()}</span>
+                        <span class="total-label">Weekdays Left</span>
+                    </div>
+                    <div class="total-item">
+                        <span class="total-value">${netWorkdays.toLocaleString()}</span>
+                        <span class="total-label">Work Days Left</span>
+                        <span class="total-note">&minus;${workdays - netWorkdays} holidays &amp; PTO</span>
+                    </div>
+                </div>
+            `;
+
+            updatedEl.textContent = 'Updated ' + now.toLocaleTimeString();
+        }
+
+        update();
+        setInterval(update, 60000);
+    </script>
+</body>
+</html>
